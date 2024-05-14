@@ -1,0 +1,15 @@
+apiVersion: 1
+
+datasources:
+  - name: my-postgres
+    type: postgres
+    orgId: 1
+    url: "postgres:5432"
+    editable: true
+    isDefault: true
+    user: root
+    database: vehicle_db
+    jsonData:
+        sslmode: disable
+    secureJsonData:
+      password: public

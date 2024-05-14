@@ -1,0 +1,80 @@
+version: '3.9'
+services:
+  emqx-enterprise:
+    image: emqx/emqx-enterprise:5.6.0
+    container_name: emqx
+    healthcheck:
+      test: ["CMD", "emqx", "ping"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+    ports:
+      - 1883:1883
+      - 18083:18083
+    volumes:
+      - $PWD/emqx/cluster.hocon:/opt/emqx/data/configs/cluster.hocon
+      - $PWD/emqx/api_secret:/opt/emqx/data/api_secret
+    environment:
+      EMQX_DASHBOARD__BOOTSTRAP_USERS_FILE: '"/opt/emqx/data/api_secret"'
+    depends_on:
+      postgres:
+        condition: service_started
+
+  mqttx-simulate:
+    image: emqx/mqttx-cli:v1.9.3
+    container_name: mqttx-simulate
+    volumes:
+      - $PWD/mqttx/vehicle-location.js:/app/mqttx-simulate/vehicle-location.js
+    command:
+      - /bin/sh
+      - -c
+      - |
+        mqttx simulate --file /app/mqttx-simulate/vehicle-location.js -t mqttx/simulate/vehicle-location/1NXBR32E57Z81234%i -c 5 -h emqx-enterprise -im 1000 -I 1NXBR32E57Z81234%i
+    depends_on:
+      emqx-enterprise:
+        condition: service_healthy
+
+  mqttx:
+    image: emqx/mqttx-cli:v1.9.3
+    container_name: mqttx
+    command:
+      - /bin/sh
+      - -c
+      - |
+        mqttx sub -t 'mqttx/simulate/#' -v -h emqx-enterprise
+    depends_on:
+      emqx-enterprise:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:13
+    container_name: postgres
+    ports:
+      - 5432:5432
+    environment:
+      POSTGRES_PASSWORD: public
+      POSTGRES_USER: root
+      POSTGRES_DB: vehicle_db
+    volumes:
+      - $PWD/postgres/create-table.sql:/docker-entrypoint-initdb.d/init.sql
+
+  grafana:
+    image: grafana/grafana:9.3.2
+    container_name: grafana
+    ports:
+      - 3000:3000
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=public
+    volumes:
+      - $PWD/emqx-exporter/config/grafana-template/EMQX5-enterprise:/grafana-dashboard-emqx5-ee
+      - $PWD/grafana-dashboards:/grafana-dashboard-vehicle-location
+      - $PWD/grafana-provisioning/dashboard.yaml:/etc/grafana/provisioning/dashboards/dashboard.yaml
+      - $PWD/grafana-provisioning/datasource.yaml:/etc/grafana/provisioning/datasources/datasource.yaml
+    depends_on:
+      emqx-enterprise:
+        condition: service_healthy
+      postgres:
+        condition: service_started
+networks:
+  emqx-net:
+    name: emqx-net

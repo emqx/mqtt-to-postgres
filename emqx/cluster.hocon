@@ -1,0 +1,136 @@
+connectors {
+  pgsql {
+    vehicle_event {
+      database = vehicle_db
+      description = ""
+      enable = true
+      password = public
+      pool_size = 8
+      resource_opts {
+        health_check_interval = 15s
+        start_after_created = true
+        start_timeout = 5s
+      }
+      server = "postgres:5432"
+      ssl {
+        ciphers = []
+        depth = 10
+        enable = false
+        hibernate_after = 5s
+        log_level = notice
+        reuse_sessions = true
+        secure_renegotiate = true
+        verify = verify_peer
+        versions = [tlsv1.3, tlsv1.2]
+      }
+      username = root
+    }
+    vehicle_location_data {
+      database = vehicle_db
+      description = ""
+      enable = true
+      password = public
+      pool_size = 8
+      resource_opts {
+        health_check_interval = 15s
+        start_after_created = true
+        start_timeout = 5s
+      }
+      server = "postgres:5432"
+      ssl {
+        ciphers = []
+        depth = 10
+        enable = false
+        hibernate_after = 5s
+        log_level = notice
+        reuse_sessions = true
+        secure_renegotiate = true
+        verify = verify_peer
+        versions = [tlsv1.3, tlsv1.2]
+      }
+      username = root
+    }
+  }
+}
+actions {
+  pgsql {
+    save_vehicle_event {
+      connector = vehicle_event
+      description = ""
+      enable = true
+      parameters {
+        sql = """~
+          insert into vehicle_events(clientid, event)
+          values (
+            ${clientid},
+            ${event}
+          )~"""
+      }
+      resource_opts {
+        batch_size = 1
+        batch_time = 0ms
+        health_check_interval = 15s
+        inflight_window = 100
+        max_buffer_bytes = 256MB
+        query_mode = async
+        request_ttl = 45s
+        worker_pool_size = 16
+      }
+    }
+    save_vehicle_location_data {
+      connector = vehicle_location_data
+      description = ""
+      enable = true
+      parameters {
+        sql = """~
+          insert into vehicle_location_data(vin, latitude, longitude)
+          values (${payload.vin}, ${payload.latitude}, ${payload.longitude})~"""
+      }
+      resource_opts {
+        batch_size = 1
+        batch_time = 0ms
+        health_check_interval = 15s
+        inflight_window = 100
+        max_buffer_bytes = 256MB
+        query_mode = async
+        request_ttl = 45s
+        worker_pool_size = 16
+      }
+    }
+  }
+}
+rule_engine {
+  ignore_sys_message = true
+  jq_function_default_timeout = 10s
+  rules {
+    save_vehicle_event {
+      actions = [
+        "pgsql:save_vehicle_event"
+      ]
+      description = ""
+      enable = true
+      metadata {created_at = 1715507599357}
+      name = ""
+      sql = """~
+        SELECT
+          *
+        FROM
+          "$events/client_connected",
+          "$events/client_disconnected"~"""
+    }
+    save_vehicle_location_data {
+      actions = [
+        "pgsql:save_vehicle_location_data"
+      ]
+      description = ""
+      enable = true
+      metadata {created_at = 1715507729120}
+      name = ""
+      sql = """~
+        SELECT
+          payload
+        FROM
+          "mqttx/simulate/#"~"""
+    }
+  }
+}
